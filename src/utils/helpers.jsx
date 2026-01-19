@@ -8,7 +8,7 @@ import {
   uploadFile,
   saveAuthor as saveFirebaseAuthor,
   getAuthors as getFirebaseAuthors
-} from '../firebase/services';
+} from '../firebase/firestoreOnly';
 
 // Notification utility
 export const showNotification = (message, type = 'success') => {
@@ -65,39 +65,84 @@ export const showNotification = (message, type = 'success') => {
 // Firebase Storage utilities - Firebase ONLY
 export const storage = {
   getPatents: async () => {
-    return await getFirebasePatents();
+    try {
+      return await getFirebasePatents();
+    } catch (error) {
+      console.error('Firebase getPatents error:', error);
+      throw new Error('Failed to load patents from Firebase');
+    }
   },
   
   addPatent: async (patentData) => {
-    return await addFirebasePatent(patentData);
+    try {
+      return await addFirebasePatent(patentData);
+    } catch (error) {
+      console.error('Firebase addPatent error:', error);
+      throw new Error('Failed to save patent to Firebase');
+    }
   },
   
   updatePatent: async (patentId, patentData) => {
-    return await updateFirebasePatent(patentId, patentData);
+    try {
+      return await updateFirebasePatent(patentId, patentData);
+    } catch (error) {
+      console.error('Firebase updatePatent error:', error);
+      throw new Error('Failed to update patent in Firebase');
+    }
   },
   
   deletePatent: async (patentId) => {
-    await deleteFirebasePatent(patentId);
+    try {
+      await deleteFirebasePatent(patentId);
+    } catch (error) {
+      console.error('Firebase deletePatent error:', error);
+      throw new Error('Failed to delete patent from Firebase');
+    }
   },
   
   getPatent: async (patentId) => {
-    return await getFirebasePatent(patentId);
+    try {
+      return await getFirebasePatent(patentId);
+    } catch (error) {
+      console.error('Firebase getPatent error:', error);
+      throw new Error('Failed to load patent from Firebase');
+    }
   },
   
   saveAuthor: async (patentId, positionId, authorData) => {
-    await saveFirebaseAuthor(patentId, positionId, authorData);
+    try {
+      await saveFirebaseAuthor(patentId, positionId, authorData);
+    } catch (error) {
+      console.error('Firebase saveAuthor error:', error);
+      throw new Error('Failed to save author to Firebase');
+    }
   },
   
   getAuthors: async (patentId) => {
-    return await getFirebaseAuthors(patentId);
+    try {
+      return await getFirebaseAuthors(patentId);
+    } catch (error) {
+      console.error('Firebase getAuthors error:', error);
+      throw new Error('Failed to load authors from Firebase');
+    }
   },
   
   uploadSignature: async (file, authorId) => {
-    return await uploadSignature(file, authorId);
+    try {
+      return await uploadSignature(file, authorId);
+    } catch (error) {
+      console.error('Firebase uploadSignature error:', error);
+      throw new Error('Failed to upload signature to Firebase');
+    }
   },
   
   uploadFile: async (file, patentId, fileType) => {
-    return await uploadFile(file, patentId, fileType);
+    try {
+      return await uploadFile(file, patentId, fileType);
+    } catch (error) {
+      console.error('Firebase uploadFile error:', error);
+      throw new Error('Failed to upload file to Firebase');
+    }
   }
 };
 

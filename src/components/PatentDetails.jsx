@@ -20,14 +20,12 @@ const PatentDetails = () => {
       setLoading(true);
       console.log('Loading patent with ID:', id);
       
-      // Get patent from storage (handles both Firebase and localStorage)
       const currentPatent = await storage.getPatent(id);
       
       if (currentPatent) {
         console.log('Patent found:', currentPatent);
         setPatent(currentPatent);
         
-        // Load saved details (try Firebase first, then localStorage)
         if (currentPatent.details) {
           if (currentPatent.details.positions) {
             setPositions(currentPatent.details.positions);
@@ -36,17 +34,6 @@ const PatentDetails = () => {
           }
           if (currentPatent.details.files) {
             setUploadedFiles(currentPatent.details.files);
-          }
-        } else {
-          // Fallback to localStorage for details
-          const savedDetails = JSON.parse(localStorage.getItem(`patent_${id}_details`) || '{}');
-          if (savedDetails.positions) {
-            setPositions(savedDetails.positions);
-            const maxId = Math.max(...savedDetails.positions.map(p => p.id));
-            setPositionCounter(maxId);
-          }
-          if (savedDetails.files) {
-            setUploadedFiles(savedDetails.files);
           }
         }
       } else {
@@ -109,19 +96,25 @@ const PatentDetails = () => {
     try {
       showNotification('Processing files...', 'info');
       
+      // Check file sizes before processing
+      for (let file of files) {
+        if (file.size > 50 * 1024 * 1024) { // 50MB limit
+          showNotification(`File "${file.name}" is too large. Maximum size is 50MB.`, 'error');
+          return;
+        }
+      }
+      
       const uploadPromises = Array.from(files).map(file => 
         storage.uploadFile(file, id, inputId)
       );
       
       const uploadedFileResults = await Promise.all(uploadPromises);
       
-      // Update local state
       setUploadedFiles(prev => ({
         ...prev,
         [inputId]: uploadedFileResults
       }));
       
-      // Save to database
       const updatedPatentDetails = {
         files: {
           ...uploadedFiles,
@@ -130,21 +123,18 @@ const PatentDetails = () => {
         positions: positions
       };
       
-      try {
-        await storage.updatePatent(id, { details: updatedPatentDetails });
-        alert(`✅ SUCCESS: ${files.length} file(s) processed and saved successfully!`);
-        showNotification(`${files.length} file(s) processed and saved!`);
-      } catch (dbError) {
-        console.log('Database save failed, using localStorage:', dbError);
-        localStorage.setItem(`patent_${id}_details`, JSON.stringify(updatedPatentDetails));
-        alert(`✅ SUCCESS: ${files.length} file(s) processed and saved locally!`);
-        showNotification('Files processed and saved locally!', 'success');
-      }
+      await storage.updatePatent(id, { details: updatedPatentDetails });
+      showNotification(`${files.length} file(s) uploaded successfully!`);
       
     } catch (error) {
       console.error('Error processing files:', error);
-      alert(`❌ ERROR: Failed to process files - ${error.message}`);
-      showNotification('Error processing files', 'error');
+      if (error.message.includes('Too much data')) {
+        showNotification('Too many files stored. Please delete some files first.', 'error');
+      } else if (error.message.includes('too large')) {
+        showNotification('File too large. Please use smaller files (max 10MB after compression).', 'error');
+      } else {
+        showNotification(`Error: ${error.message}`, 'error');
+      }
     }
   };
 
@@ -172,14 +162,38 @@ const PatentDetails = () => {
     }
   };
 
-  const handleDeleteFile = (inputId) => {
+  const handleDeleteFile = async (inputId) => {
     if (window.confirm('Are you sure you want to delete the uploaded files?')) {
-      setUploadedFiles(prev => {
-        const newFiles = { ...prev };
-        delete newFiles[inputId];
-        return newFiles;
-      });
-      showNotification('Files deleted successfully!');
+      try {
+        // Remove files from state
+        setUploadedFiles(prev => {
+          const newFiles = { ...prev };
+          delete newFiles[inputId];
+          return newFiles;
+        });
+        
+        // Update Firebase immediately
+        const updatedPatentDetails = {
+          files: {
+            ...uploadedFiles,
+            [inputId]: undefined
+          },
+          positions: positions
+        };
+        
+        // Remove undefined values
+        Object.keys(updatedPatentDetails.files).forEach(key => {
+          if (updatedPatentDetails.files[key] === undefined) {
+            delete updatedPatentDetails.files[key];
+          }
+        });
+        
+        await storage.updatePatent(id, { details: updatedPatentDetails });
+        showNotification('Files deleted successfully!');
+      } catch (error) {
+        console.error('Error deleting files:', error);
+        showNotification('Error deleting files', 'error');
+      }
     }
   };
 
@@ -190,15 +204,8 @@ const PatentDetails = () => {
         positions: positions
       };
       
-      // Try Firebase first, fallback to localStorage
-      try {
-        await storage.updatePatent(id, { details: patentDetails });
-        showNotification('All changes saved successfully!');
-      } catch (error) {
-        console.log('Firebase save failed, using localStorage:', error);
-        localStorage.setItem(`patent_${id}_details`, JSON.stringify(patentDetails));
-        showNotification('Changes saved locally!');
-      }
+      await storage.updatePatent(id, { details: patentDetails });
+      showNotification('All changes saved successfully!');
     } catch (error) {
       console.error('Error saving changes:', error);
       showNotification('Error saving changes', 'error');
@@ -233,36 +240,44 @@ const PatentDetails = () => {
         {hasFiles && (
           <>
             <div className="file-info" style={{ display: 'block' }}>
-              <i className="fas fa-check-circle"></i>
               {files.length} file(s) uploaded
             </div>
             <div className="file-list" style={{ marginTop: '0.5rem' }}>
               {files.map((file, index) => (
                 <div key={index} className="file-item" style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  padding: '0.25rem 0',
-                  fontSize: '0.8rem'
+                  padding: '0.5rem',
+                  fontSize: '0.75rem'
                 }}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ marginBottom: '0.5rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {file.name}
-                  </span>
-                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <button 
-                      className="view-btn" 
-                      style={{ padding: '0.2rem 0.4rem', fontSize: '0.7rem' }}
-                      onClick={() => window.open(file.url, '_blank')}
+                      className="file-action-btn" 
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = file.url;
+                        link.download = file.name;
+                        link.click();
+                      }}
+                      title="View file"
+                      style={{ background: 'none', border: 'none', color: '#38BDF8', cursor: 'pointer', padding: '0', fontSize: '0.8rem' }}
                     >
-                      View
+                      <i className="fas fa-eye"></i> View
+                    </button>
+                    <button 
+                      className="file-action-btn" 
+                      onClick={() => handleDeleteFile(id)}
+                      title="Delete file"
+                      style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0', fontSize: '0.8rem' }}
+                    >
+                      <i className="fas fa-trash"></i> Delete
                     </button>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="file-actions" style={{ display: 'flex', marginTop: '0.5rem' }}>
-              <button className="delete-btn" onClick={() => handleDeleteFile(id)}>Delete All</button>
-            </div>
+
           </>
         )}
       </div>

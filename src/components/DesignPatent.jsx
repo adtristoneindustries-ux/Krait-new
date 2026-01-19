@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from './Navbar.jsx';
 import PatentModal from './PatentModal.jsx';
 import { showNotification, storage, formatDate } from '../utils/helpers.jsx';
-import { testFirebaseConnection } from '../firebase/test.js';
+import { testFirebaseConnection } from '../firebase/firebaseTest.js';
 
 const DesignPatent = () => {
   const [patents, setPatents] = useState([]);

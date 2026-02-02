@@ -14,7 +14,8 @@ import {
   ref, 
   uploadBytes, 
   getDownloadURL,
-  deleteObject 
+  deleteObject,
+  listAll 
 } from 'firebase/storage';
 import { db, storage } from './config';
 
@@ -58,36 +59,35 @@ export const deletePatent = async (patentId) => {
   console.log('Deleting patent:', patentId);
   
   try {
-    // Get patent data first to access files and title
+    // Get patent data first
     const patent = await getPatent(patentId);
     if (!patent) {
       console.log('Patent not found');
       return;
     }
     
-    // Delete all files from Firebase Storage
-    const filesToDelete = [
-      patent.form1, patent.form21, patent.representationSheet, 
-      patent.form21Stamp, patent.doc1, patent.doc2, patent.doc3
-    ].filter(Boolean);
-    
-    // Delete files from storage
-    for (const fileData of filesToDelete) {
-      if (fileData?.url) {
-        try {
-          // Extract file path from URL
-          const url = new URL(fileData.url);
-          const pathMatch = url.pathname.match(/o\/(.*?)\?/);
-          if (pathMatch) {
-            const filePath = decodeURIComponent(pathMatch[1]);
-            const fileRef = ref(storage, filePath);
-            await deleteObject(fileRef);
-            console.log('File deleted:', filePath);
-          }
-        } catch (error) {
-          console.log('File already deleted or not found');
-        }
-      }
+    // Delete entire patent folder from Firebase Storage
+    try {
+      // List all files in the patent folder
+      const { listAll } = await import('firebase/storage');
+      const folderRef = ref(storage, patent.title);
+      const listResult = await listAll(folderRef);
+      
+      // Delete all files in the folder
+      const deletePromises = listResult.items.map(itemRef => deleteObject(itemRef));
+      await Promise.all(deletePromises);
+      
+      // Delete all subfolders
+      const subfolderPromises = listResult.prefixes.map(async (prefixRef) => {
+        const subList = await listAll(prefixRef);
+        const subDeletePromises = subList.items.map(itemRef => deleteObject(itemRef));
+        return Promise.all(subDeletePromises);
+      });
+      await Promise.all(subfolderPromises);
+      
+      console.log('Patent folder deleted from storage:', patent.title);
+    } catch (storageError) {
+      console.log('Storage cleanup completed or folder was empty');
     }
     
     // Delete patent document from Firestore

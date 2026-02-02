@@ -859,9 +859,17 @@ body.home-page .back-button-container {
 }
 
 .loading-state {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
     text-align: center;
     padding: 3rem;
     color: #667eea;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 .loading-state i {

@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar.jsx';
 import AuthorModal from './AuthorModal.jsx';
 import { showNotification, storage } from '../utils/helpers.jsx';
+import { ref, deleteObject } from 'firebase/storage';
+import { storage as firebaseStorage } from '../firebase/config';
 
 const PatentDetails = () => {
   const { id } = useParams();
@@ -394,7 +396,25 @@ const PatentDetails = () => {
   const handleDeleteFile = async (inputId, fileIndex) => {
     if (window.confirm('Are you sure you want to delete this file?')) {
       try {
-        // Update local state - remove the file
+        const fileToDelete = uploadedFiles[inputId][fileIndex];
+        
+        // Delete from Firebase Storage
+        if (fileToDelete?.url) {
+          try {
+            const url = new URL(fileToDelete.url);
+            const pathMatch = url.pathname.match(/o\/(.*?)\?/);
+            if (pathMatch) {
+              const filePath = decodeURIComponent(pathMatch[1]);
+              const fileRef = ref(firebaseStorage, filePath);
+              await deleteObject(fileRef);
+              console.log('File deleted from storage:', filePath);
+            }
+          } catch (storageError) {
+            console.log('Storage deletion error:', storageError);
+          }
+        }
+        
+        // Update local state
         const currentFiles = uploadedFiles[inputId] || [];
         const updatedFiles = currentFiles.filter((_, index) => index !== fileIndex);
         
@@ -403,13 +423,14 @@ const PatentDetails = () => {
           [inputId]: updatedFiles
         }));
         
-        // Update patent in Firebase - remove file reference
+        // Update patent in Firebase Database
+        const currentPatent = await storage.getPatent(patent.title);
         const updatedPatent = {
-          ...patent,
+          ...currentPatent,
           [inputId]: updatedFiles.length > 0 ? updatedFiles[0] : null
         };
         
-        await storage.updatePatent(id, updatedPatent);
+        await storage.updatePatent(patent.title, updatedPatent);
         setPatent(updatedPatent);
         
         showNotification('File deleted successfully!');
@@ -538,7 +559,7 @@ const PatentDetails = () => {
     return (
       <div>
         <Navbar />
-        <div className="loading-state" style={{ padding: '4rem', textAlign: 'center' }}>
+        <div className="loading-state" style={{ padding: '4rem', textAlign: 'center', position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 1000 }}>
           <i className="fas fa-spinner fa-spin" style={{ fontSize: '2rem', marginBottom: '1rem', color: '#667eea' }}></i>
           <p>Loading patent details...</p>
         </div>

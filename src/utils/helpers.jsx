@@ -109,9 +109,10 @@ export const storage = {
     }
   },
   
-  saveAuthor: async (authorData) => {
+  saveAuthor: async (patentId, positionId, authorData) => {
     try {
-      return await saveFirebaseAuthor(authorData);
+      console.log('Saving author data:', authorData);
+      return await saveFirebaseAuthor(patentId, positionId, authorData);
     } catch (error) {
       console.error('Firebase saveAuthor error:', error);
       throw new Error('Failed to save author to Firebase');
@@ -127,9 +128,9 @@ export const storage = {
     }
   },
   
-  uploadSignature: async (file, positionNo) => {
+  uploadSignature: async (file, patentTitle, positionNo) => {
     try {
-      return await uploadFirebaseSignature(file, positionNo);
+      return await uploadFirebaseSignature(file, patentTitle, positionNo);
     } catch (error) {
       console.error('Firebase uploadSignature error:', error);
       throw new Error('Failed to upload signature to Firebase');
@@ -137,21 +138,47 @@ export const storage = {
   },
   
   getPatentFiles: async (patentId) => {
-    return {}; // Return empty object since no file storage
+    // Return files from patent data instead of separate collection
+    const patent = await getFirebasePatent(patentId);
+    if (!patent) return {};
+    
+    const files = {};
+    ['form1', 'form21', 'representationSheet', 'form21Stamp', 'document1', 'document2', 'document3'].forEach(fileType => {
+      if (patent[fileType]) {
+        files[fileType] = [patent[fileType]];
+      }
+    });
+    return files;
   },
   
   savePosition: async (patentId, positionData) => {
-    return true; // Position data handled in patent details
+    // Position data handled in patent details
+    return true;
   },
   
   getPatentPositions: async (patentId) => {
-    return []; // Return empty array
+    const patent = await getFirebasePatent(patentId);
+    return patent?.positions || [];
+  },
+  
+  getAuthors: async (patentId) => {
+    try {
+      return await getFirebaseAuthors(patentId);
+    } catch (error) {
+      console.error('Firebase getAuthors error:', error);
+      return {};
+    }
   },
   
   getAuthor: async (authorId) => {
     try {
-      const authors = await getFirebaseAuthors(authorId.split('_')[0]);
-      return authors[authorId.split('_')[1]] || null;
+      const parts = authorId.split('_');
+      if (parts.length < 2) return null;
+      
+      const patentId = parts[0];
+      const positionId = parts[1];
+      const authors = await getFirebaseAuthors(patentId);
+      return authors[positionId] || null;
     } catch (error) {
       console.error('Firebase getAuthor error:', error);
       return null;

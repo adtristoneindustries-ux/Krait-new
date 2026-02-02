@@ -13,55 +13,91 @@ import {
 import { 
   ref, 
   uploadBytes, 
-  getDownloadURL 
+  getDownloadURL,
+  deleteObject 
 } from 'firebase/storage';
 import { db, storage } from './config';
 
-// Patent operations with complete details
+// Patent operations with complete details - all data in patents collection
 export const addPatent = async (patentData) => {
-  const docRef = await addDoc(collection(db, 'patents'), {
+  // Use patent title as document ID for easy finding
+  const docRef = doc(db, 'patents', patentData.title);
+  
+  await setDoc(docRef, {
     title: patentData.title,
     status: patentData.status,
-    // File details
     form1: patentData.form1 || null,
     form21: patentData.form21 || null,
     representationSheet: patentData.representationSheet || null,
     form21Stamp: patentData.form21Stamp || null,
-    document1: patentData.document1 || null,
-    document2: patentData.document2 || null,
-    document3: patentData.document3 || null,
-    // Position details
+    doc1: patentData.doc1 || null,
+    doc2: patentData.doc2 || null,
+    doc3: patentData.doc3 || null,
     positions: patentData.positions || [],
+    authors: patentData.authors || {},
     createdAt: new Date().toISOString()
   });
-  return { id: docRef.id, ...patentData, createdAt: new Date().toISOString() };
+  
+  return { id: patentData.title, ...patentData, createdAt: new Date().toISOString() };
 };
 
 export const updatePatent = async (patentId, patentData) => {
   const patentRef = doc(db, 'patents', patentId);
   
-  await updateDoc(patentRef, {
+  // Only update the fields that are provided
+  const updateData = {
     ...patentData,
     updatedAt: new Date().toISOString()
-  });
-  return { id: patentId, ...patentData };
+  };
+  
+  await updateDoc(patentRef, updateData);
+  return { id: patentId, ...updateData };
 };
 
 export const deletePatent = async (patentId) => {
-  await deleteDoc(doc(db, 'patents', patentId));
+  console.log('Deleting patent:', patentId);
   
-  // Delete all authors for this patent
-  const authorsSnapshot = await getDocs(collection(db, 'authors'));
-  const deletePromises = [];
-  
-  authorsSnapshot.forEach((authorDoc) => {
-    const data = authorDoc.data();
-    if (data.patentId === patentId) {
-      deletePromises.push(deleteDoc(doc(db, 'authors', authorDoc.id)));
+  try {
+    // Get patent data first to access files and title
+    const patent = await getPatent(patentId);
+    if (!patent) {
+      console.log('Patent not found');
+      return;
     }
-  });
-  
-  await Promise.all(deletePromises);
+    
+    // Delete all files from Firebase Storage
+    const filesToDelete = [
+      patent.form1, patent.form21, patent.representationSheet, 
+      patent.form21Stamp, patent.doc1, patent.doc2, patent.doc3
+    ].filter(Boolean);
+    
+    // Delete files from storage
+    for (const fileData of filesToDelete) {
+      if (fileData?.url) {
+        try {
+          // Extract file path from URL
+          const url = new URL(fileData.url);
+          const pathMatch = url.pathname.match(/o\/(.*?)\?/);
+          if (pathMatch) {
+            const filePath = decodeURIComponent(pathMatch[1]);
+            const fileRef = ref(storage, filePath);
+            await deleteObject(fileRef);
+            console.log('File deleted:', filePath);
+          }
+        } catch (error) {
+          console.log('File already deleted or not found');
+        }
+      }
+    }
+    
+    // Delete patent document from Firestore
+    await deleteDoc(doc(db, 'patents', patentId));
+    console.log('Patent deleted successfully');
+    
+  } catch (error) {
+    console.error('Error deleting patent:', error);
+    throw error;
+  }
 };
 
 export const getPatents = async () => {
@@ -128,10 +164,10 @@ export const uploadFile = async (file, patentTitle, fileType) => {
   };
 };
 
-// Signature upload to Firebase Storage
-export const uploadSignature = async (file, positionNo) => {
+// Signature upload to Firebase Storage - under patent title
+export const uploadSignature = async (file, patentTitle, positionNo) => {
   const fileName = `signature_position_${positionNo}_${Date.now()}.${file.name.split('.').pop()}`;
-  const fileRef = ref(storage, `signatures/${fileName}`);
+  const fileRef = ref(storage, `${patentTitle}/signatures/${fileName}`);
   
   await uploadBytes(fileRef, file);
   const downloadURL = await getDownloadURL(fileRef);
@@ -143,38 +179,45 @@ export const uploadSignature = async (file, positionNo) => {
   };
 };
 
-// Author operations with complete details
+// Author operations - save to patents collection
 export const saveAuthor = async (patentId, positionId, authorData) => {
-  const authorRef = doc(db, 'authors', `${patentId}_${positionId}`);
-  await setDoc(authorRef, {
-    // Author details in order
-    fullName: authorData.fullName,
-    department: authorData.department,
-    designation: authorData.designation,
-    college: authorData.college,
-    email: authorData.email,
-    mobile: authorData.mobile,
-    signatureFileName: authorData.signatureFileName,
-    signatureUrl: authorData.signatureUrl,
-    amount: authorData.amount,
-    pendingAmount: authorData.pendingAmount,
-    // Reference data
-    patentId,
-    positionId,
+  console.log('saveAuthor called with:', { patentId, positionId, authorData });
+  
+  if (!authorData) {
+    throw new Error('Author data is required');
+  }
+  
+  const patentRef = doc(db, 'patents', patentId);
+  const patent = await getDoc(patentRef);
+  
+  if (!patent.exists()) {
+    throw new Error('Patent not found');
+  }
+  
+  const patentData = patent.data();
+  const authors = patentData.authors || {};
+  
+  authors[positionId] = {
+    fullName: authorData.fullName || authorData.name || '',
+    department: authorData.department || '',
+    designation: authorData.designation || '',
+    college: authorData.college || '',
+    email: authorData.email || '',
+    mobile: authorData.mobile || '',
+    signatureFileName: authorData.signatureFileName || '',
+    signatureUrl: authorData.signatureUrl || '',
+    amount: authorData.amount || '0',
+    pendingAmount: authorData.pendingAmount || '0',
     savedAt: new Date().toISOString()
-  });
+  };
+  
+  await updateDoc(patentRef, { authors });
+  console.log('Author saved to patents collection');
+  return authors[positionId];
 };
 
 export const getAuthors = async (patentId) => {
-  const authorsSnapshot = await getDocs(collection(db, 'authors'));
-  const authors = {};
-  
-  authorsSnapshot.forEach((doc) => {
-    const data = doc.data();
-    if (data.patentId === patentId) {
-      authors[data.positionId] = data;
-    }
-  });
-  
-  return authors;
+  console.log('Getting authors for patent:', patentId);
+  const patent = await getPatent(patentId);
+  return patent?.authors || {};
 };

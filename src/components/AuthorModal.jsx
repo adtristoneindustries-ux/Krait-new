@@ -40,18 +40,11 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      try {
-        const authorId = `${positionId}_${Date.now()}`;
-        const signatureData = await storage.uploadSignature(file, authorId);
-        setFormData(prev => ({ 
-          ...prev, 
-          signature: signatureData.url,
-          signatureFileName: signatureData.fileName
-        }));
-      } catch (error) {
-        console.error('Error uploading signature:', error);
-        alert('Error uploading signature. Please try again.');
-      }
+      setFormData(prev => ({ 
+        ...prev, 
+        signature: file,
+        signatureFileName: file.name
+      }));
     }
   };
 
@@ -196,7 +189,7 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
                   </button>
                 </div>
                 
-                {formData.signature && (
+                {(formData.signature && typeof formData.signature === 'string') ? (
                   <div className="signature-preview">
                     <img src={formData.signature} alt="Signature" className="signature-image" />
                     <button 
@@ -207,7 +200,18 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
                       <i className="fas fa-times"></i>
                     </button>
                   </div>
-                )}
+                ) : formData.signature ? (
+                  <div className="signature-preview">
+                    <img src={URL.createObjectURL(formData.signature)} alt="Signature" className="signature-image" />
+                    <button 
+                      type="button" 
+                      className="remove-signature-btn"
+                      onClick={() => setFormData(prev => ({ ...prev, signature: null }))}
+                    >
+                      <i className="fas fa-times"></i>
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

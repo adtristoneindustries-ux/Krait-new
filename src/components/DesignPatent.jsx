@@ -25,7 +25,7 @@ const DesignPatent = () => {
     try {
       setLoading(true);
       const savedPatents = await storage.getPatents();
-      savedPatents.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      // Patents are already sorted by createdAt desc from Firebase
       setPatents(savedPatents);
       setFilteredPatents(savedPatents);
     } catch (error) {
@@ -92,14 +92,15 @@ const DesignPatent = () => {
   };
 
   const handleDeletePatent = async (id) => {
-    if (window.confirm('Are you sure you want to delete this patent?')) {
+    if (window.confirm('Are you sure you want to delete this patent? This will also delete all associated files.')) {
       try {
+        console.log('Deleting patent with ID:', id);
         await storage.deletePatent(id);
-        loadPatents();
-        showNotification('Patent deleted successfully!');
+        await loadPatents();
+        showNotification('Patent and all files deleted successfully!');
       } catch (error) {
         console.error('Error deleting patent:', error);
-        showNotification('Error deleting patent', 'error');
+        showNotification('Error deleting patent. Please try again.', 'error');
       }
     }
   };

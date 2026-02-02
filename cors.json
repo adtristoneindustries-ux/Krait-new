@@ -1,0 +1,9 @@
+    [
+      {
+        "origin": ["https://krait-publishing.web.app"],
+        "method": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+        "responseHeader": ["Content-Type", "Firebase-Storage-Resumable-Upload-Status", "X-Firebase-Storage-Upload-Task-Internal-Reason"],
+        "maxAgeSeconds": 3600
+      }
+    ]
+    

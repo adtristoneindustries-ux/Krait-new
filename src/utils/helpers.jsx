@@ -4,8 +4,8 @@ import {
   updatePatent as updateFirebasePatent,
   deletePatent as deleteFirebasePatent,
   getPatent as getFirebasePatent,
-  uploadSignature,
-  uploadFile,
+  uploadFile as uploadFirebaseFile,
+  uploadSignature as uploadFirebaseSignature,
   saveAuthor as saveFirebaseAuthor,
   getAuthors as getFirebaseAuthors
 } from '../firebase/firestoreOnly';
@@ -109,39 +109,52 @@ export const storage = {
     }
   },
   
-  saveAuthor: async (patentId, positionId, authorData) => {
+  saveAuthor: async (authorData) => {
     try {
-      await saveFirebaseAuthor(patentId, positionId, authorData);
+      return await saveFirebaseAuthor(authorData);
     } catch (error) {
       console.error('Firebase saveAuthor error:', error);
       throw new Error('Failed to save author to Firebase');
     }
   },
   
-  getAuthors: async (patentId) => {
+  uploadFile: async (file, patentTitle, fileType) => {
     try {
-      return await getFirebaseAuthors(patentId);
+      return await uploadFirebaseFile(file, patentTitle, fileType);
     } catch (error) {
-      console.error('Firebase getAuthors error:', error);
-      throw new Error('Failed to load authors from Firebase');
+      console.error('Firebase uploadFile error:', error);
+      throw new Error('Failed to upload file to Firebase');
     }
   },
   
-  uploadSignature: async (file, authorId) => {
+  uploadSignature: async (file, positionNo) => {
     try {
-      return await uploadSignature(file, authorId);
+      return await uploadFirebaseSignature(file, positionNo);
     } catch (error) {
       console.error('Firebase uploadSignature error:', error);
       throw new Error('Failed to upload signature to Firebase');
     }
   },
   
-  uploadFile: async (file, patentId, fileType) => {
+  getPatentFiles: async (patentId) => {
+    return {}; // Return empty object since no file storage
+  },
+  
+  savePosition: async (patentId, positionData) => {
+    return true; // Position data handled in patent details
+  },
+  
+  getPatentPositions: async (patentId) => {
+    return []; // Return empty array
+  },
+  
+  getAuthor: async (authorId) => {
     try {
-      return await uploadFile(file, patentId, fileType);
+      const authors = await getFirebaseAuthors(authorId.split('_')[0]);
+      return authors[authorId.split('_')[1]] || null;
     } catch (error) {
-      console.error('Firebase uploadFile error:', error);
-      throw new Error('Failed to upload file to Firebase');
+      console.error('Firebase getAuthor error:', error);
+      return null;
     }
   }
 };

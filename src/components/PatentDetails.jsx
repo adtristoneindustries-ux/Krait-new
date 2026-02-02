@@ -26,16 +26,39 @@ const PatentDetails = () => {
         console.log('Patent found:', currentPatent);
         setPatent(currentPatent);
         
-        if (currentPatent.details) {
-          if (currentPatent.details.positions) {
-            setPositions(currentPatent.details.positions);
-            const maxId = Math.max(...currentPatent.details.positions.map(p => p.id));
-            setPositionCounter(maxId);
-          }
-          if (currentPatent.details.files) {
-            setUploadedFiles(currentPatent.details.files);
-          }
-        }
+        // Load files from patent data
+        const files = {
+          form1: currentPatent.form1 ? [currentPatent.form1] : [],
+          form21: currentPatent.form21 ? [currentPatent.form21] : [],
+          representationSheet: currentPatent.representationSheet ? [currentPatent.representationSheet] : [],
+          form21Stamp: currentPatent.form21Stamp ? [currentPatent.form21Stamp] : [],
+          document1: currentPatent.document1 ? [currentPatent.document1] : [],
+          document2: currentPatent.document2 ? [currentPatent.document2] : [],
+          document3: currentPatent.document3 ? [currentPatent.document3] : []
+        };
+        setUploadedFiles(files);
+        
+        // Load authors and positions
+        const authors = await storage.getAuthors(id);
+        const positionsWithAuthors = currentPatent.positions?.map((pos, index) => ({
+          id: index + 1,
+          positionNumber: pos.positionNo || index + 1,
+          amount: authors[index + 1]?.amount || '',
+          pendingAmount: authors[index + 1]?.pendingAmount || '',
+          author: authors[index + 1] ? {
+            name: authors[index + 1].fullName,
+            department: authors[index + 1].department,
+            designation: authors[index + 1].designation,
+            college: authors[index + 1].college,
+            email: authors[index + 1].email,
+            mobile: authors[index + 1].mobile,
+            signature: authors[index + 1].signatureUrl,
+            signatureFileName: authors[index + 1].signatureFileName
+          } : null
+        })) || [{ id: 1, positionNumber: 1, amount: '', pendingAmount: '', author: null }];
+        
+        setPositions(positionsWithAuthors);
+        setPositionCounter(positionsWithAuthors.length);
       } else {
         console.log('Patent not found with ID:', id);
       }
@@ -83,58 +106,97 @@ const PatentDetails = () => {
     setIsAuthorModalOpen(true);
   };
 
-  const handleSaveAuthor = (authorData, positionId) => {
-    setPositions(positions.map(p => 
-      p.id === positionId ? { ...p, author: authorData } : p
-    ));
-    showNotification('Author details saved successfully!');
+  const handleSaveAuthor = async (authorData, positionId) => {
+    try {
+      let signatureData = null;
+      
+      // Upload signature if provided
+      if (authorData.signature && typeof authorData.signature !== 'string') {
+        signatureData = await storage.uploadSignature(authorData.signature, positionId);
+      }
+      
+      // Save author to Firebase
+      await storage.saveAuthor(id, positionId, {
+        fullName: authorData.name,
+        department: authorData.department,
+        designation: authorData.designation,
+        college: authorData.college,
+        email: authorData.email,
+        mobile: authorData.mobile,
+        signatureFileName: signatureData?.fileName || authorData.signatureFileName,
+        signatureUrl: signatureData?.url || authorData.signature,
+        amount: positions.find(p => p.id === positionId)?.amount || '',
+        pendingAmount: positions.find(p => p.id === positionId)?.pendingAmount || ''
+      });
+      
+      // Update local state
+      setPositions(positions.map(p => 
+        p.id === positionId ? { 
+          ...p, 
+          author: {
+            ...authorData,
+            signature: signatureData?.url || authorData.signature,
+            signatureFileName: signatureData?.fileName || authorData.signatureFileName
+          }
+        } : p
+      ));
+      
+      // Update patent with position info
+      const updatedPositions = positions.map(p => 
+        p.id === positionId ? { 
+          positionNo: p.positionNumber,
+          authorName: authorData.name
+        } : {
+          positionNo: p.positionNumber,
+          authorName: p.author?.name || ''
+        }
+      );
+      
+      await storage.updatePatent(id, {
+        ...patent,
+        positions: updatedPositions
+      });
+      
+      showNotification('Author details saved successfully!');
+    } catch (error) {
+      console.error('Error saving author:', error);
+      showNotification('Error saving author details', 'error');
+    }
   };
 
   const handleFileUpload = async (inputId, files) => {
     if (files.length === 0) return;
     
     try {
-      showNotification('Processing files...', 'info');
+      showNotification('Uploading files...', 'info');
       
-      // Check file sizes before processing
-      for (let file of files) {
-        if (file.size > 50 * 1024 * 1024) { // 50MB limit
-          showNotification(`File "${file.name}" is too large. Maximum size is 50MB.`, 'error');
-          return;
-        }
-      }
-      
+      // Upload files to Firebase Storage
       const uploadPromises = Array.from(files).map(file => 
-        storage.uploadFile(file, id, inputId)
+        storage.uploadFile(file, patent.title, inputId)
       );
       
       const uploadedFileResults = await Promise.all(uploadPromises);
       
+      // Replace existing files (not append)
       setUploadedFiles(prev => ({
         ...prev,
         [inputId]: uploadedFileResults
       }));
       
-      const updatedPatentDetails = {
-        files: {
-          ...uploadedFiles,
-          [inputId]: uploadedFileResults
-        },
-        positions: positions
+      // Update patent in Firebase with file details
+      const updatedPatent = {
+        ...patent,
+        [inputId]: uploadedFileResults[0] // Store first file info
       };
       
-      await storage.updatePatent(id, { details: updatedPatentDetails });
+      await storage.updatePatent(id, updatedPatent);
+      setPatent(updatedPatent);
+      
       showNotification(`${files.length} file(s) uploaded successfully!`);
       
     } catch (error) {
-      console.error('Error processing files:', error);
-      if (error.message.includes('Too much data')) {
-        showNotification('Too many files stored. Please delete some files first.', 'error');
-      } else if (error.message.includes('too large')) {
-        showNotification('File too large. Please use smaller files (max 10MB after compression).', 'error');
-      } else {
-        showNotification(`Error: ${error.message}`, 'error');
-      }
+      console.error('Error uploading files:', error);
+      showNotification(`Error: ${error.message}`, 'error');
     }
   };
 
@@ -162,49 +224,66 @@ const PatentDetails = () => {
     }
   };
 
-  const handleDeleteFile = async (inputId) => {
-    if (window.confirm('Are you sure you want to delete the uploaded files?')) {
+  const handleDeleteFile = async (inputId, fileIndex) => {
+    if (window.confirm('Are you sure you want to delete this file?')) {
       try {
-        // Remove files from state
-        setUploadedFiles(prev => {
-          const newFiles = { ...prev };
-          delete newFiles[inputId];
-          return newFiles;
-        });
+        // Update local state
+        const updatedFiles = uploadedFiles[inputId]?.filter((_, index) => index !== fileIndex) || [];
+        setUploadedFiles(prev => ({
+          ...prev,
+          [inputId]: updatedFiles
+        }));
         
-        // Update Firebase immediately
-        const updatedPatentDetails = {
-          files: {
-            ...uploadedFiles,
-            [inputId]: undefined
-          },
-          positions: positions
+        // Update patent in Firebase
+        const updatedPatent = {
+          ...patent,
+          [inputId]: updatedFiles.length > 0 ? updatedFiles[0] : null
         };
         
-        // Remove undefined values
-        Object.keys(updatedPatentDetails.files).forEach(key => {
-          if (updatedPatentDetails.files[key] === undefined) {
-            delete updatedPatentDetails.files[key];
-          }
-        });
+        await storage.updatePatent(id, updatedPatent);
+        setPatent(updatedPatent);
         
-        await storage.updatePatent(id, { details: updatedPatentDetails });
-        showNotification('Files deleted successfully!');
+        showNotification('File deleted successfully!');
       } catch (error) {
-        console.error('Error deleting files:', error);
-        showNotification('Error deleting files', 'error');
+        console.error('Error deleting file:', error);
+        showNotification('Error deleting file', 'error');
       }
     }
   };
 
   const handleSaveAllChanges = async () => {
     try {
-      const patentDetails = {
-        files: uploadedFiles,
-        positions: positions
-      };
+      // Save all position and author data to Firebase
+      const positionPromises = positions.map(async (position) => {
+        if (position.author) {
+          await storage.saveAuthor(id, position.id, {
+            fullName: position.author.name,
+            department: position.author.department,
+            designation: position.author.designation,
+            college: position.author.college,
+            email: position.author.email,
+            mobile: position.author.mobile,
+            signatureFileName: position.author.signatureFileName,
+            signatureUrl: position.author.signature,
+            amount: position.amount,
+            pendingAmount: position.pendingAmount
+          });
+        }
+      });
       
-      await storage.updatePatent(id, { details: patentDetails });
+      await Promise.all(positionPromises);
+      
+      // Update patent with all position info
+      const updatedPositions = positions.map(p => ({
+        positionNo: p.positionNumber,
+        authorName: p.author?.name || ''
+      }));
+      
+      await storage.updatePatent(id, {
+        ...patent,
+        positions: updatedPositions
+      });
+      
       showNotification('All changes saved successfully!');
     } catch (error) {
       console.error('Error saving changes:', error);
@@ -267,7 +346,7 @@ const PatentDetails = () => {
                     </button>
                     <button 
                       className="file-action-btn" 
-                      onClick={() => handleDeleteFile(id)}
+                      onClick={() => handleDeleteFile(id, index)}
                       title="Delete file"
                       style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0', fontSize: '0.8rem' }}
                     >

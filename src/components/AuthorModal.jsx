@@ -42,8 +42,12 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
     if (file) {
       try {
         const authorId = `${positionId}_${Date.now()}`;
-        const downloadURL = await storage.uploadSignature(file, authorId);
-        setFormData(prev => ({ ...prev, signature: downloadURL }));
+        const signatureData = await storage.uploadSignature(file, authorId);
+        setFormData(prev => ({ 
+          ...prev, 
+          signature: signatureData.url,
+          signatureFileName: signatureData.fileName
+        }));
       } catch (error) {
         console.error('Error uploading signature:', error);
         alert('Error uploading signature. Please try again.');
@@ -59,21 +63,16 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
       return;
     }
     
-    // Email validation
     if (!validateEmail(email)) {
       alert('Please enter a valid email address');
       return;
     }
     
-    // Mobile validation
     if (!validateMobile(mobile)) {
       alert('Please enter exactly 10 digits for mobile number');
       return;
     }
     
-
-    // Save author (no try-catch needed as storage.saveAuthor handles errors internally)
-    await storage.saveAuthor(patentId || 'temp', positionId, formData);
     onSave(formData, positionId);
     handleClose();
   };
@@ -95,7 +94,7 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
 
   return (
     <div className={`modal-overlay ${isOpen ? 'active' : ''}`} onClick={handleClose}>
-      <div className="modal" style={{ maxWidth: '800px' }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal author-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Author Details</h3>
           <button className="close-btn" onClick={handleClose}>
@@ -193,7 +192,7 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
                     className="upload-signature-btn"
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    <i className="fas fa-image"></i> Choose Signature Image
+                    <i className="fas fa-image"></i> Choose Signature
                   </button>
                 </div>
                 
@@ -205,7 +204,7 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
                       className="remove-signature-btn"
                       onClick={() => setFormData(prev => ({ ...prev, signature: null }))}
                     >
-                      <i className="fas fa-times"></i> Remove
+                      <i className="fas fa-times"></i>
                     </button>
                   </div>
                 )}
@@ -218,7 +217,7 @@ const AuthorModal = ({ isOpen, onClose, onSave, author = null, positionId, paten
             Cancel
           </button>
           <button className="btn btn-save" onClick={handleSave}>
-            Save Details
+            Save
           </button>
         </div>
       </div>
